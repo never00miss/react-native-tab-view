@@ -359,7 +359,7 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
     let labelWidth      = this.state.labelWidth;
   
     let scrollAmount    = centerDistance - layout.width / 2;
-    let activePosition  = this.state.activePosition;
+    let activePosition  = Math.round(i);
     let targetPosition  = Math.floor(i);
     let indicatorScrollAmount = 0;
 
