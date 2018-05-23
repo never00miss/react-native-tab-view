@@ -81,26 +81,36 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
       }
     }
 
-    const initialOffset =
-      this.props.scrollEnabled && this.props.layout.width
-        ? {
-            x: this._getScrollAmount(
-              this.props,
-              this.props.navigationState.index
-            ),
-            y: 0,
-          }
-        : undefined;
+    this._beforeWidth = new Animated.Value(0); // Added
+    this._activeWidth = new Animated.Value(0);
 
     this.state = {
       visibility: new Animated.Value(initialVisibility),
       scrollAmount: new Animated.Value(0),
-      initialOffset,
+      activePosition: 0,
+      labelWidth: [0],
+      leftX: new Animated.Value(0),
+      refLabel: [],
     };
   }
 
   componentDidMount() {
     this.props.scrollEnabled && this._startTrackingPosition();
+
+    const initialOffset =
+    this.props.scrollEnabled && this.props.layout.width
+      ? {
+          x: this._getScrollAmount(
+            this.props,
+            this.props.navigationState.index
+          ),
+          y: 0,
+        }
+      : undefined;
+
+    this.setState({
+      initialOffset
+    })
   }
 
   componentDidUpdate(prevProps: Props<T>) {
@@ -173,9 +183,30 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
         : -navigationState.index * layout.width;
 
     const value = (panX + offsetX) / -(layout.width || 0.001);
+    
+    this.setState({
+      activePosition: Math.round(value),
+    })
 
     this._adjustScroll(value);
   };
+
+  _getWidth = (event) => {
+    // because  tabLabel.margin = 8, so leftMargin 8 and rightMargin 8
+    const flattened   = StyleSheet.flatten(styles.tabLabel);
+    let labelMargin = 0;
+
+    if("margin" in flattened) {
+      labelMargin = flattened.margin * 2;
+    }
+
+    let labelWidth  = this.state.labelWidth;
+    labelWidth.push(event.nativeEvent.layout.width + labelMargin);
+
+    this.setState({
+      labelWidth : labelWidth,
+    })
+  }
 
   _renderLabel = (scene: Scene<*>) => {
     if (typeof this.props.renderLabel !== 'undefined') {
@@ -185,8 +216,9 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
     if (typeof label !== 'string') {
       return null;
     }
+
     return (
-      <Animated.Text style={[styles.tabLabel, this.props.labelStyle]}>
+      <Animated.Text onLayout={(event) => this._getWidth(event)} style={[styles.tabLabel, this.props.labelStyle]}>
         {label}
       </Animated.Text>
     );
@@ -196,26 +228,64 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
     if (typeof this.props.renderIndicator !== 'undefined') {
       return this.props.renderIndicator(props);
     }
-    const { width, position, navigationState } = props;
-    const translateX = Animated.multiply(
-      Animated.multiply(
-        position.interpolate({
-          inputRange: [0, navigationState.routes.length - 1],
-          outputRange: [0, navigationState.routes.length - 1],
-          extrapolate: 'clamp',
-        }),
-        width
-      ),
-      I18nManager.isRTL ? -1 : 1
-    );
+    const { scrollEnabled, position, navigationState } = props;
+
+    let width           = scrollEnabled ? 65 : props.width;
+    let labelWidth      = this.state.labelWidth;
+    let activePosition  = this.state.activePosition;
+    
+    if(scrollEnabled && typeof labelWidth[activePosition + 1] != "undefined" ) {
+      width = labelWidth[activePosition + 1];
+     
+    } else if(!scrollEnabled) {
+      const translateX = Animated.multiply(
+        Animated.multiply(
+          position.interpolate({
+            inputRange: [0, navigationState.routes.length - 1],
+            outputRange: [0, navigationState.routes.length - 1],
+            extrapolate: 'clamp',
+          }),
+          width
+        ),
+        I18nManager.isRTL ? -1 : 1
+      );
+
+      return (
+        <Animated.View
+          style={[
+            styles.indicator,
+            { width, transform: [{ translateX }] },
+            this.props.indicatorStyle,
+          ]}
+        />
+      );
+    } 
+
     return (
-      <Animated.View
-        style={[
-          styles.indicator,
-          { width, transform: [{ translateX }] },
-          this.props.indicatorStyle,
-        ]}
-      />
+      <Animated.ScrollView
+      horizontal
+      style={[
+        styles.indicator,
+        {
+          width : 1200,
+          backgroundColor: "transparent"
+        }
+      ]}
+      >
+        <Animated.View style={{flex: 1, width: 1200}}>
+        <View style={{flex: 3, flexDirection: "row"}}>
+          <Animated.View
+            style={{
+              backgroundColor: "#FFFFFF",
+              width: width,
+              transform: [{
+                translateX  : this.state.leftX,
+              }],
+            }}
+          />
+        </View>
+        </Animated.View>
+      </Animated.ScrollView>
     );
   };
 
@@ -266,14 +336,63 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
     return Math.max(Math.min(value, maxDistance), 0);
   };
 
+  _isFloat = (x) => { return !!(x % 1); }
+
+  _getTotalActiveWidth = (activePosition = 0) => {
+    let arrayLabelWidth = this.state.labelWidth;
+    let penampung       = 0;
+
+    activePosition      = activePosition;
+
+    for (let x = 0; x <= activePosition; x++) {
+      penampung += arrayLabelWidth[x];
+    }
+
+    return penampung;
+  }
+
   _getScrollAmount = (props, i) => {
-    const { layout } = props;
-    const tabWidth = this._getTabWidth(props);
-    const centerDistance = tabWidth * (i + 1 / 2);
-    const scrollAmount = centerDistance - layout.width / 2;
+    const { layout }  = props;
+    const tabWidth    = this._getTabWidth(props);
+
+    let centerDistance  = tabWidth * (i + 1 / 2);
+    let labelWidth      = this.state.labelWidth;
+  
+    let scrollAmount    = centerDistance - layout.width / 2;
+    let activePosition  = this.state.activePosition;
+    let targetPosition  = Math.floor(i);
+    let indicatorScrollAmount = 0;
+
+    if(typeof labelWidth != "undefined" ) {
+      let isFloatScroll   = 0;
+      let notFloatScroll  = 0;
+      let stabilizer      = i - targetPosition;
+      
+      isFloatScroll       = this._getTotalActiveWidth(activePosition) + (labelWidth[targetPosition + 1] * stabilizer);
+
+      indicatorScrollAmount = isFloatScroll;
+      if(indicatorScrollAmount > this._getTotalActiveWidth(targetPosition + 1)) {
+        indicatorScrollAmount = this._getTotalActiveWidth(targetPosition + 1);
+      }
+
+      if(!isNaN(indicatorScrollAmount)) {
+       Animated.spring(
+         this.state.leftX,
+         {
+            toValue: Math.round(indicatorScrollAmount),
+            useNativeDriver: true,
+         }
+       ).start();
+      }
+
+      scrollAmount = centerDistance  - layout.width;
+      for (let x = 0; x <= i; x++) {
+        scrollAmount += labelWidth[x];
+      }
+    }  
 
     return this._normalizeScrollValue(props, scrollAmount);
-  };
+  }; 
 
   _adjustScroll = (value: number) => {
     if (this.props.scrollEnabled) {
@@ -439,7 +558,7 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
                 scrollEnabled === true;
               const tabContainerStyle = {};
 
-              if (isWidthSet) {
+              if (isWidthSet && !scrollEnabled) {
                 tabStyle.width = tabWidth;
               }
 
@@ -507,7 +626,7 @@ const styles = StyleSheet.create({
     overflow: Platform.OS === 'web' ? 'auto' : 'scroll',
   },
   tabBar: {
-    backgroundColor: '#2196f3',
+    backgroundColor: '#EE3322',
     elevation: 4,
     shadowColor: 'black',
     shadowOpacity: 0.1,
@@ -529,7 +648,7 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     flex: 1,
-    padding: 8,
+    // padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -546,11 +665,11 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   indicator: {
-    backgroundColor: '#ffeb3b',
+    backgroundColor: '#FFFFFF',
     position: 'absolute',
     left: 0,
     bottom: 0,
     right: 0,
-    height: 2,
+    height: 5,
   },
 });
