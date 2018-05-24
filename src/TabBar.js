@@ -81,16 +81,12 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
       }
     }
 
-    this._beforeWidth = new Animated.Value(0); // Added
-    this._activeWidth = new Animated.Value(0);
-
     this.state = {
       visibility: new Animated.Value(initialVisibility),
       scrollAmount: new Animated.Value(0),
       activePosition: 0,
       labelWidth: [0],
       leftX: new Animated.Value(0),
-      refLabel: [],
     };
   }
 
