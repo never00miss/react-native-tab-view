@@ -348,28 +348,32 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
   }
 
   _getScrollAmount = (props, i) => {
-    const { layout }  = props;
-    const tabWidth    = this._getTabWidth(props);
+    const { layout, scrollEnabled }  = props;
+    const tabWidth      = this._getTabWidth(props);
 
-    let centerDistance  = tabWidth * (i + 1 / 2);
     let labelWidth      = this.state.labelWidth;
-  
-    let scrollAmount    = centerDistance - layout.width / 2;
+    
+    let centerDistance  = 0;
+    let scrollAmount    = 0;
     let activePosition  = Math.round(i);
     let targetPosition  = Math.floor(i);
     let indicatorScrollAmount = 0;
 
-    if(typeof labelWidth != "undefined" ) {
+    if(typeof labelWidth != "undefined" && scrollEnabled) {
       let isFloatScroll   = 0;
       let notFloatScroll  = 0;
       let stabilizer      = i - targetPosition;
       
       isFloatScroll       = this._getTotalActiveWidth(activePosition) + (labelWidth[targetPosition + 1] * stabilizer);
 
+      const layoutWidth   = (layout.width / 2) * -1;
+
       indicatorScrollAmount = isFloatScroll;
       if(indicatorScrollAmount > this._getTotalActiveWidth(targetPosition + 1)) {
         indicatorScrollAmount = this._getTotalActiveWidth(targetPosition + 1);
       }
+      
+      scrollAmount = layoutWidth + indicatorScrollAmount + (labelWidth[targetPosition] / 2); 
 
       if(!isNaN(indicatorScrollAmount)) {
        Animated.spring(
@@ -380,11 +384,9 @@ export default class TabBar<T: *> extends React.Component<Props<T>, State> {
          }
        ).start();
       }
-
-      scrollAmount = centerDistance  - layout.width;
-      for (let x = 0; x <= i; x++) {
-        scrollAmount += labelWidth[x];
-      }
+    } else {
+      centerDistance  = tabWidth * (i + 1 / 2);
+      scrollAmount    = centerDistance - layout.width / 2;
     }  
 
     return this._normalizeScrollValue(props, scrollAmount);
